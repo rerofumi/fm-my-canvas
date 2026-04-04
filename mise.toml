@@ -6,6 +6,8 @@ go = "latest"
 setup = { run = "go install github.com/wailsapp/wails/v2/cmd/wails@latest", description = "Install Wails CLI" }
 dev = { run = "wails dev", description = "Run Wails in development mode" }
 build = { run = "wails build", description = "Build the Wails application" }
+test = { run = "go test ./...", description = "Run all Go tests" }
+"test:verbose" = { run = "go test -v ./...", description = "Run all Go tests with verbose output" }
 
 # Frontend tasks
 "frontend:install" = { run = "cd frontend && npm install", description = "Install frontend dependencies" }
