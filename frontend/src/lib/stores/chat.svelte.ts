@@ -1,4 +1,5 @@
 import type { types } from '../../../wailsjs/go/models';
+import type { ArtifactFile } from '../parsers/artifact';
 
 export type ChatMessage = types.Message;
 export type ChatSession = types.Session;
@@ -7,6 +8,9 @@ let sessions = $state<ChatSession[]>([]);
 let currentSessionId = $state<string | null>(null);
 let streamingContent = $state<string>('');
 let isStreaming = $state<boolean>(false);
+let artifactFiles = $state<ArtifactFile[]>([]);
+let previewUrl = $state<string>('');
+let selectedFilePath = $state<string | null>(null);
 
 export function getSessions() {
 	return sessions;
@@ -28,6 +32,18 @@ export function getIsStreaming() {
 	return isStreaming;
 }
 
+export function getArtifactFiles() {
+	return artifactFiles;
+}
+
+export function getPreviewUrl() {
+	return previewUrl;
+}
+
+export function getSelectedFilePath() {
+	return selectedFilePath;
+}
+
 export function setSessions(s: ChatSession[]) {
 	sessions = s;
 }
@@ -35,6 +51,13 @@ export function setSessions(s: ChatSession[]) {
 export function setCurrentSessionId(id: string | null) {
 	currentSessionId = id;
 	streamingContent = '';
+}
+
+export function clearArtifactData() {
+	streamingContent = '';
+	artifactFiles = [];
+	previewUrl = '';
+	selectedFilePath = null;
 }
 
 export function setStreamingContent(content: string) {
@@ -47,6 +70,18 @@ export function appendStreamingContent(chunk: string) {
 
 export function setIsStreaming(value: boolean) {
 	isStreaming = value;
+}
+
+export function setArtifactFiles(files: ArtifactFile[]) {
+	artifactFiles = files;
+}
+
+export function setPreviewUrl(url: string) {
+	previewUrl = url;
+}
+
+export function setSelectedFilePath(path: string | null) {
+	selectedFilePath = path;
 }
 
 export function updateSession(id: string, updated: ChatSession) {

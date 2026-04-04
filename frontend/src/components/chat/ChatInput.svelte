@@ -2,9 +2,10 @@
 	let { onsend, disabled = false }: { onsend: (text: string) => void; disabled?: boolean } = $props();
 
 	let inputText = $state('');
+	let textareaEl: HTMLTextAreaElement | undefined = $state();
 
 	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'Enter' && !e.shiftKey) {
+		if (e.key === 'Enter' && e.ctrlKey) {
 			e.preventDefault();
 			handleSend();
 		}
@@ -14,16 +15,30 @@
 		if (!inputText.trim() || disabled) return;
 		onsend(inputText.trim());
 		inputText = '';
+		resetHeight();
+	}
+
+	function autoResize() {
+		if (!textareaEl) return;
+		textareaEl.style.height = 'auto';
+		textareaEl.style.height = Math.min(textareaEl.scrollHeight, 150) + 'px';
+	}
+
+	function resetHeight() {
+		if (!textareaEl) return;
+		textareaEl.style.height = 'auto';
 	}
 </script>
 
 <div class="chat-input-container">
 	<textarea
+		bind:this={textareaEl}
 		bind:value={inputText}
 		onkeydown={handleKeydown}
-		placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
+		oninput={autoResize}
+		placeholder="Type a message... (Ctrl+Enter to send)"
 		disabled={disabled}
-		rows="1"
+		rows="2"
 		class="chat-textarea"
 	></textarea>
 	<button class="send-btn" onclick={handleSend} disabled={disabled || !inputText.trim()}>

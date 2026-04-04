@@ -18,6 +18,8 @@
 
 	$effect(() => {
 		if (chatContainer) {
+			currentSession;
+			streamingContent;
 			chatContainer.scrollTop = chatContainer.scrollHeight;
 		}
 	});
@@ -35,7 +37,7 @@
 		<div class="chat-container" bind:this={chatContainer}>
 			{#each currentSession.messages as message (message.created_at)}
 				{#if message.role !== 'system'}
-					<ChatMessage {message} />
+					<ChatMessage {message} defaultCollapsed={true} />
 				{/if}
 			{/each}
 			{#if streamingContent}

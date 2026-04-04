@@ -5,7 +5,11 @@
 	} from '../../lib/stores/chat.svelte';
 	import { createNewSession, switchSession, deleteSession } from '../../lib/services/wails';
 
-	let { onopensettings }: { onopensettings: () => void } = $props();
+	let { onopensettings, collapsed = false, ontoggle }: {
+		onopensettings: () => void;
+		collapsed?: boolean;
+		ontoggle?: () => void;
+	} = $props();
 
 	let sessions = $derived(getSessions());
 	let currentId = $derived(getCurrentSessionId());
@@ -24,36 +28,47 @@
 	}
 </script>
 
-<aside class="sidebar">
-	<div class="sidebar-header">
-		<h2 class="sidebar-title">Sessions</h2>
-		<button class="new-chat-btn" onclick={handleNewChat}>+ New</button>
-	</div>
+{#if collapsed}
+	<aside class="sidebar-collapsed">
+		<button class="toggle-btn" onclick={ontoggle} title="Expand sidebar">
+			<span class="toggle-icon">&gt;</span>
+		</button>
+	</aside>
+{:else}
+	<aside class="sidebar">
+		<div class="sidebar-header">
+			<h2 class="sidebar-title">Sessions</h2>
+			<div class="header-actions">
+				<button class="collapse-btn" onclick={ontoggle} title="Collapse sidebar">&lt;</button>
+				<button class="new-chat-btn" onclick={handleNewChat}>+ New</button>
+			</div>
+		</div>
 
-	<div class="session-list">
-		{#if sessions.length === 0}
-			<p class="empty-message">No sessions yet</p>
-		{:else}
-			{#each sessions as session (session.id)}
-				<div
-					class="session-item"
-					class:active={session.id === currentId}
-					onclick={() => handleSelect(session.id)}
-					role="button"
-					tabindex="0"
-					onkeydown={(e) => e.key === 'Enter' && handleSelect(session.id)}
-				>
-					<span class="session-title">{session.title}</span>
-					<button class="delete-btn" onclick={(e) => handleDelete(e, session.id)}>x</button>
-				</div>
-			{/each}
-		{/if}
-	</div>
+		<div class="session-list">
+			{#if sessions.length === 0}
+				<p class="empty-message">No sessions yet</p>
+			{:else}
+				{#each sessions as session (session.id)}
+					<div
+						class="session-item"
+						class:active={session.id === currentId}
+						onclick={() => handleSelect(session.id)}
+						role="button"
+						tabindex="0"
+						onkeydown={(e) => e.key === 'Enter' && handleSelect(session.id)}
+					>
+						<span class="session-title">{session.title}</span>
+						<button class="delete-btn" onclick={(e) => handleDelete(e, session.id)}>x</button>
+					</div>
+				{/each}
+			{/if}
+		</div>
 
-	<div class="sidebar-footer">
-		<button class="settings-btn" onclick={onopensettings}>Settings</button>
-	</div>
-</aside>
+		<div class="sidebar-footer">
+			<button class="settings-btn" onclick={onopensettings}>Settings</button>
+		</div>
+	</aside>
+{/if}
 
 <style>
 	.sidebar {
@@ -67,12 +82,66 @@
 		overflow: hidden;
 	}
 
+	.sidebar-collapsed {
+		width: 40px;
+		min-width: 40px;
+		background-color: #0f1724;
+		border-right: 1px solid #2d3748;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		padding-top: 0.8rem;
+		height: 100%;
+	}
+
+	.toggle-btn {
+		background: none;
+		border: 1px solid #2d3748;
+		color: #a0aec0;
+		border-radius: 4px;
+		cursor: pointer;
+		padding: 0.4rem 0.5rem;
+		font-size: 0.85rem;
+		transition: background-color 0.15s, color 0.15s;
+	}
+
+	.toggle-btn:hover {
+		background-color: #1a2744;
+		color: #e2e8f0;
+	}
+
+	.toggle-icon {
+		display: inline-block;
+	}
+
 	.sidebar-header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		padding: 1rem;
 		border-bottom: 1px solid #2d3748;
+	}
+
+	.header-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+	}
+
+	.collapse-btn {
+		padding: 0.2rem 0.5rem;
+		font-size: 0.8rem;
+		background: none;
+		border: 1px solid #2d3748;
+		color: #718096;
+		border-radius: 4px;
+		cursor: pointer;
+		transition: background-color 0.15s, color 0.15s;
+	}
+
+	.collapse-btn:hover {
+		background-color: #1a2744;
+		color: #e2e8f0;
 	}
 
 	.sidebar-title {
