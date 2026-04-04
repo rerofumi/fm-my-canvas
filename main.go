@@ -12,14 +12,19 @@ import (
 var assets embed.FS
 
 func main() {
-	// Create an instance of the app structure
 	app := NewApp()
 
-	// Create application with options
-	err := wails.Run(&options.App{
+	chatService, err := NewChatService()
+	if err != nil {
+		println("Failed to initialize chat service:", err.Error())
+		return
+	}
+	app.SetChatService(chatService)
+
+	err = wails.Run(&options.App{
 		Title:  "fm-my-canvas",
-		Width:  1024,
-		Height: 768,
+		Width:  1280,
+		Height: 800,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
@@ -27,6 +32,7 @@ func main() {
 		OnStartup:        app.startup,
 		Bind: []interface{}{
 			app,
+			chatService,
 		},
 	})
 
