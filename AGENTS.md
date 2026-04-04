@@ -50,6 +50,16 @@
 - Wails バインディングの型定義を活用
 - 実装後に eslint による静的解析を必ず行う
 
+#### Svelte 5 特有の注意点
+- **コンポーネントのマウント**: `new Component()` は使用不可。`import { mount } from 'svelte'` を使用し `mount(Component, { target })` でマウントする
+- **状態管理**: `let count = $state(0)` のように `$state()` ルーンを使用する
+- **アセットのインポート**: Svelte 内の画像は `import logo from './assets/image.png'` で Vite 経由でインポートする（`src` 属性に直接パスを書かない）
+- **イベント修飾子**: `@click.prevent` 等の修飾子は使用不可。`onclick={(e) => { e.preventDefault(); handler() }}` と記述する
+
+#### Vite 6 特有の注意点
+- **ESM 必須**: `package.json` に `"type": "module"` が必要
+- **vite.config.ts**: ESM 形式で記述（CommonJS は非対応）
+
 ---
 
 ## 開発ワークフロー

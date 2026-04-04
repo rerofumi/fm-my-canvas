@@ -20,6 +20,8 @@
     "skipLibCheck": true
   },
   "include": [
-    "src"
+    "src/**/*.ts",
+    "src/**/*.d.ts",
+    "src/**/*.svelte"
   ]
 }

@@ -6,3 +6,7 @@ go = "latest"
 setup = { run = "go install github.com/wailsapp/wails/v2/cmd/wails@latest", description = "Install Wails CLI" }
 dev = { run = "wails dev", description = "Run Wails in development mode" }
 build = { run = "wails build", description = "Build the Wails application" }
+
+# Frontend tasks
+"frontend:install" = { run = "cd frontend && npm install", description = "Install frontend dependencies" }
+"frontend:install-svelte" = { run = "cd frontend && npm install -D svelte @sveltejs/vite-plugin-svelte @tsconfig/svelte svelte-check typescript", description = "Install Svelte 5 and related dependencies" }
