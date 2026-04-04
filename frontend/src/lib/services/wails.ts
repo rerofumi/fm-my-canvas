@@ -13,6 +13,9 @@ import {
 	setSelectedFilePath,
 	getStreamingContent,
 	clearArtifactData,
+	addToolCallEntry,
+	updateToolCallResult,
+	getToolCallLog,
 } from '../stores/chat.svelte';
 import { EventsOn } from '../../../wailsjs/runtime/runtime';
 import type { config } from '../../../wailsjs/go/models';
@@ -48,32 +51,37 @@ export async function switchSession(id: string) {
 	if (session) {
 		updateSession(id, session);
 
-		let lastArtifactContent = '';
-		for (let i = session.messages.length - 1; i >= 0; i--) {
-			const msg = session.messages[i];
-			if (msg.role === 'assistant') {
-				const files = parseArtifacts(msg.content);
-				if (files.length > 0) {
-					lastArtifactContent = msg.content;
-					break;
-				}
-			}
+		const { RestoreArtifacts } = await import('../../../wailsjs/go/main/ChatService');
+		const result = await RestoreArtifacts(id);
+
+		if (result.preview_url) {
+			setPreviewUrl(result.preview_url);
+		} else {
+			setPreviewUrl('');
 		}
 
-		if (lastArtifactContent) {
-			const files = parseArtifacts(lastArtifactContent);
-			setArtifactFiles(files);
-
-			const { RestoreArtifacts } = await import('../../../wailsjs/go/main/ChatService');
-			const result = await RestoreArtifacts(id);
-			if (result.preview_url) {
-				setPreviewUrl(result.preview_url);
-			} else {
-				setPreviewUrl('');
-			}
-			if (result.files) {
-				const paths = result.files.split(',').filter(Boolean);
+		if (result.files) {
+			const paths = result.files.split(',').filter(Boolean);
+			if (paths.length > 0) {
 				setSelectedFilePath(paths[0]);
+
+				let lastArtifactContent = '';
+				for (let i = session.messages.length - 1; i >= 0; i--) {
+					const msg = session.messages[i];
+					if (msg.role === 'assistant') {
+						const files = parseArtifacts(msg.content);
+						if (files.length > 0) {
+							lastArtifactContent = msg.content;
+							break;
+						}
+					}
+				}
+
+				if (lastArtifactContent) {
+					setArtifactFiles(parseArtifacts(lastArtifactContent));
+				} else {
+					setArtifactFiles(paths.map(p => ({ language: '', path: p, content: '' })));
+				}
 			}
 		} else {
 			setArtifactFiles([]);
@@ -163,6 +171,30 @@ export function registerLLMListener() {
 				const paths = data.files.split(',').filter(Boolean);
 				if (paths.length > 0) {
 					setSelectedFilePath(paths[0]);
+				}
+			}
+		} catch {
+			// ignore
+		}
+	});
+
+	EventsOn('tool-event', (data: Record<string, any>) => {
+		try {
+			if (data.type === 'tool_call') {
+				addToolCallEntry({
+					toolName: data.tool_name,
+					toolArgs: data.tool_args,
+					status: 'running',
+					timestamp: Date.now(),
+				});
+			} else if (data.type === 'tool_result') {
+				const log = getToolCallLog();
+				const idx = log.reduce((acc, entry, i) => {
+					if (entry.status === 'running') return i;
+					return acc;
+				}, -1);
+				if (idx >= 0) {
+					updateToolCallResult(idx, data.result, data.success ? 'success' : 'error');
 				}
 			}
 		} catch {

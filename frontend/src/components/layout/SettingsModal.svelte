@@ -13,9 +13,12 @@
 	let saving = $state(false);
 	let saved = $state(false);
 
+	let draftAgentMode = $state(cfg.agent_mode || false);
+
 	async function handleSave() {
 		saving = true;
 		try {
+			draft.agent_mode = draftAgentMode;
 			const { SaveConfig } = await import('../../../wailsjs/go/main/ChatService');
 			await SaveConfig(draft);
 			Object.assign(cfg, draft);
@@ -68,6 +71,17 @@
 					<input id="openrouter-model" type="text" bind:value={draft.openrouter_model} placeholder="openai/gpt-4o" />
 				</div>
 			{/if}
+
+			<div class="form-group">
+				<div class="toggle-row">
+					<label for="agent-mode">Agent Mode</label>
+					<label class="toggle">
+						<input id="agent-mode" type="checkbox" bind:checked={draftAgentMode} />
+						<span class="toggle-slider"></span>
+					</label>
+				</div>
+				<span class="hint">Uses Tool Calls for file operations instead of Markdown code blocks.</span>
+			</div>
 		</div>
 
 		<div class="modal-footer">
@@ -206,5 +220,60 @@
 	.save-btn:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
+	}
+
+	.toggle-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.hint {
+		font-size: 0.75rem;
+		color: #718096;
+		margin-top: 0.15rem;
+	}
+
+	.toggle {
+		position: relative;
+		display: inline-block;
+		width: 40px;
+		height: 22px;
+	}
+
+	.toggle input {
+		opacity: 0;
+		width: 0;
+		height: 0;
+	}
+
+	.toggle-slider {
+		position: absolute;
+		cursor: pointer;
+		inset: 0;
+		background-color: #2d3748;
+		border-radius: 22px;
+		transition: background-color 0.2s;
+	}
+
+	.toggle-slider::before {
+		content: '';
+		position: absolute;
+		height: 16px;
+		width: 16px;
+		left: 3px;
+		bottom: 3px;
+		background-color: #718096;
+		border-radius: 50%;
+		transition: transform 0.2s, background-color 0.2s;
+	}
+
+	.toggle input:checked + .toggle-slider {
+		background-color: #3b82f6;
+	}
+
+	.toggle input:checked + .toggle-slider::before {
+		transform: translateX(18px);
+		background-color: white;
 	}
 </style>

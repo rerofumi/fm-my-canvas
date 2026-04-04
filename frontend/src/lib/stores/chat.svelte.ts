@@ -4,6 +4,14 @@ import type { ArtifactFile } from '../parsers/artifact';
 export type ChatMessage = types.Message;
 export type ChatSession = types.Session;
 
+export interface ToolCallLogEntry {
+	toolName: string;
+	toolArgs: string;
+	status: 'running' | 'success' | 'error';
+	result?: string;
+	timestamp: number;
+}
+
 let sessions = $state<ChatSession[]>([]);
 let currentSessionId = $state<string | null>(null);
 let streamingContent = $state<string>('');
@@ -11,6 +19,7 @@ let isStreaming = $state<boolean>(false);
 let artifactFiles = $state<ArtifactFile[]>([]);
 let previewUrl = $state<string>('');
 let selectedFilePath = $state<string | null>(null);
+let toolCallLog = $state<ToolCallLogEntry[]>([]);
 
 export function getSessions() {
 	return sessions;
@@ -44,6 +53,10 @@ export function getSelectedFilePath() {
 	return selectedFilePath;
 }
 
+export function getToolCallLog() {
+	return toolCallLog;
+}
+
 export function setSessions(s: ChatSession[]) {
 	sessions = s;
 }
@@ -58,6 +71,7 @@ export function clearArtifactData() {
 	artifactFiles = [];
 	previewUrl = '';
 	selectedFilePath = null;
+	toolCallLog = [];
 }
 
 export function setStreamingContent(content: string) {
@@ -97,4 +111,16 @@ export function addSession(s: ChatSession) {
 
 export function removeSession(id: string) {
 	sessions = sessions.filter(s => s.id !== id);
+}
+
+export function addToolCallEntry(entry: ToolCallLogEntry) {
+	toolCallLog = [...toolCallLog, entry];
+}
+
+export function updateToolCallResult(index: number, result: string, status: 'success' | 'error') {
+	if (index >= 0 && index < toolCallLog.length) {
+		const updated = [...toolCallLog];
+		updated[index] = { ...updated[index], result, status };
+		toolCallLog = updated;
+	}
 }

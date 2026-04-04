@@ -4,15 +4,18 @@
 		getStreamingContent,
 		getIsStreaming,
 		getCurrentSessionId,
+		getToolCallLog,
 	} from '../../lib/stores/chat.svelte';
 	import { sendMessage, createNewSession } from '../../lib/services/wails';
 	import ChatMessage from './ChatMessage.svelte';
 	import ChatInput from './ChatInput.svelte';
+	import ToolCallMessage from './ToolCallMessage.svelte';
 
 	let currentSession = $derived(getCurrentSession());
 	let streamingContent = $derived(getStreamingContent());
 	let isStreaming = $derived(getIsStreaming());
 	let currentSessionId = $derived(getCurrentSessionId());
+	let toolCallLog = $derived(getToolCallLog());
 
 	let chatContainer: HTMLDivElement | undefined = $state();
 
@@ -36,10 +39,13 @@
 	{#if currentSession}
 		<div class="chat-container" bind:this={chatContainer}>
 			{#each currentSession.messages as message (message.created_at)}
-				{#if message.role !== 'system'}
+				{#if message.role !== 'system' && message.role !== 'tool'}
 					<ChatMessage {message} defaultCollapsed={true} />
 				{/if}
 			{/each}
+			{#if toolCallLog.length > 0}
+				<ToolCallMessage />
+			{/if}
 			{#if streamingContent}
 				<div class="message streaming">
 					<div class="message-role">Assistant</div>

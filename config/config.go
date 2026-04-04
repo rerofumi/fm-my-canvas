@@ -12,6 +12,7 @@ type Config struct {
 	OllamaModel      string `json:"ollama_model"`
 	OpenRouterAPIKey string `json:"openrouter_api_key"`
 	OpenRouterModel  string `json:"openrouter_model"`
+	AgentMode        bool   `json:"agent_mode"`
 }
 
 func DefaultConfig() *Config {
