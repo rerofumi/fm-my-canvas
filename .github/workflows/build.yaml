@@ -47,7 +47,7 @@ jobs:
           cp build/bin/* ${DIR}/
           cp README.md ${DIR}/
           cp LICENSE ${DIR}/
-          zip -r fm-doc-canvas-${PLATFORM}.zip ${DIR}
+          zip -r fm-my-canvas-${PLATFORM}.zip ${DIR}
 
       - name: Upload binary to release
         uses: svenstaro/upload-release-action@v2
