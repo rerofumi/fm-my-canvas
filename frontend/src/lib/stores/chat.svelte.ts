@@ -83,6 +83,9 @@ export function clearArtifactData() {
 	artifactFiles = [];
 	previewUrl = '';
 	selectedFilePath = null;
+}
+
+export function clearToolCallLog() {
 	toolCallLog = [];
 }
 

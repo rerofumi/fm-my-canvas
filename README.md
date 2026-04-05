@@ -214,4 +214,4 @@ Tool Call ラウンドは 1 メッセージあたり最大 10 回、全体で最
 
 ## License
 
-Private
+MIT

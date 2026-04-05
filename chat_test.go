@@ -185,8 +185,8 @@ func TestTruncateToolResultOverLimit(t *testing.T) {
 
 func TestBuildSystemPromptAgentMode(t *testing.T) {
 	prompt := buildSystemPrompt(true)
-	if !strings.Contains(prompt, "file system access") {
-		t.Error("agent prompt should mention file system access")
+	if !strings.Contains(prompt, "local artifact workspace") {
+		t.Error("agent prompt should mention the local artifact workspace")
 	}
 	if !strings.Contains(prompt, "read_file") {
 		t.Error("agent prompt should mention read_file")
@@ -203,6 +203,24 @@ func TestBuildSystemPromptAgentMode(t *testing.T) {
 	if !strings.Contains(prompt, "search_code") {
 		t.Error("agent prompt should mention search_code")
 	}
+	if !strings.Contains(prompt, "source of truth") {
+		t.Error("agent prompt should describe the workspace as source of truth")
+	}
+	if !strings.Contains(prompt, "Do not guess file contents") {
+		t.Error("agent prompt should forbid guessing file contents")
+	}
+	if !strings.Contains(prompt, "self-contained browser app") {
+		t.Error("agent prompt should prefer self-contained browser apps")
+	}
+	if !strings.Contains(prompt, "Avoid external dependencies") {
+		t.Error("agent prompt should discourage external dependencies")
+	}
+	if !strings.Contains(prompt, "briefly explain what you changed") {
+		t.Error("agent prompt should require a brief change summary")
+	}
+	if !strings.Contains(prompt, "initial generation session") {
+		t.Error("default agent prompt should be for initial generation")
+	}
 }
 
 func TestBuildSystemPromptMarkdownMode(t *testing.T) {
@@ -215,6 +233,88 @@ func TestBuildSystemPromptMarkdownMode(t *testing.T) {
 	}
 	if strings.Contains(prompt, "read_file") {
 		t.Error("markdown prompt should not mention read_file")
+	}
+	if !strings.Contains(prompt, "self-contained HTML/CSS/JavaScript prototypes") {
+		t.Error("markdown prompt should prefer self-contained browser prototypes")
+	}
+	if !strings.Contains(prompt, "index.html, style.css, and script.js") {
+		t.Error("markdown prompt should mention default filenames")
+	}
+	if !strings.Contains(prompt, "complete file") {
+		t.Error("markdown prompt should require complete files")
+	}
+	if !strings.Contains(prompt, "Avoid external dependencies") {
+		t.Error("markdown prompt should discourage external dependencies")
+	}
+	if !strings.Contains(prompt, "generate complete, runnable browser code") {
+		t.Error("default markdown prompt should be for initial generation")
+	}
+}
+
+func TestBuildSystemPromptForWorkspaceAgentEditMode(t *testing.T) {
+	prompt := buildSystemPromptForWorkspace(true, []string{"index.html", "style.css", "script.js"})
+
+	if !strings.Contains(prompt, "editing session, not a fresh generation") {
+		t.Error("agent edit prompt should explicitly mark editing mode")
+	}
+	if !strings.Contains(prompt, "Current artifact files:") {
+		t.Error("agent edit prompt should include current file context")
+	}
+	if !strings.Contains(prompt, "- index.html") {
+		t.Error("agent edit prompt should list existing files")
+	}
+	if !strings.Contains(prompt, "Do not replace the whole app to satisfy a local request") {
+		t.Error("agent edit prompt should forbid whole-app replacement for local requests")
+	}
+	if !strings.Contains(prompt, "Do not rewrite unrelated files") {
+		t.Error("agent edit prompt should avoid rewriting unrelated files")
+	}
+	if !strings.Contains(prompt, "preserving the existing structure") {
+		t.Error("agent edit prompt should preserve existing structure by default")
+	}
+}
+
+func TestBuildSystemPromptForWorkspaceMarkdownEditMode(t *testing.T) {
+	prompt := buildSystemPromptForWorkspace(false, []string{"index.html"})
+
+	if !strings.Contains(prompt, "editing session for an existing artifact") {
+		t.Error("markdown edit prompt should explicitly mark editing mode")
+	}
+	if !strings.Contains(prompt, "modify the current prototype without unnecessarily replacing the rest of the app") {
+		t.Error("markdown edit prompt should prefer modifying the current prototype")
+	}
+	if !strings.Contains(prompt, "Include only the files that should be replaced") {
+		t.Error("markdown edit prompt should limit output to changed files")
+	}
+	if !strings.Contains(prompt, "Do not regenerate unrelated files") {
+		t.Error("markdown edit prompt should avoid regenerating unrelated files")
+	}
+}
+
+func TestBuildWorkspacePromptContextEmpty(t *testing.T) {
+	if got := buildWorkspacePromptContext(nil); got != "" {
+		t.Fatalf("empty context = %q, want empty string", got)
+	}
+}
+
+func TestBuildWorkspacePromptContextLimited(t *testing.T) {
+	files := []string{
+		"a", "b", "c", "d", "e", "f",
+		"g", "h", "i", "j", "k", "l", "m",
+	}
+
+	got := buildWorkspacePromptContext(files)
+	if !strings.Contains(got, "Current artifact files:") {
+		t.Fatal("context should include header")
+	}
+	if !strings.Contains(got, "- a") || !strings.Contains(got, "- l") {
+		t.Fatal("context should include the first 12 files")
+	}
+	if strings.Contains(got, "- m") {
+		t.Fatal("context should not include files after the limit")
+	}
+	if !strings.Contains(got, "- ...") {
+		t.Fatal("context should indicate omitted files")
 	}
 }
 

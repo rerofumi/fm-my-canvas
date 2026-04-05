@@ -16,9 +16,10 @@ import {
 	addToolCallEntry,
 	updateToolCallResult,
 	getToolCallLog,
+	clearToolCallLog,
 	addConsoleLog,
 } from '../stores/chat.svelte';
-import { EventsOn } from '../../../wailsjs/runtime/runtime';
+import { EventsOn, EventsOff } from '../../../wailsjs/runtime/runtime';
 import type { config } from '../../../wailsjs/go/models';
 import { parseStreamingArtifacts } from '../parsers/artifact';
 import type { ArtifactFile } from '../parsers/artifact';
@@ -111,6 +112,7 @@ export async function sendMessage(message: string) {
 		await SendMessage(sessionId, message);
 	} finally {
 		setIsStreaming(false);
+		clearToolCallLog();
 	}
 
 	const { GetSession } = await import('../../../wailsjs/go/main/ChatService');
@@ -205,6 +207,8 @@ function initGlobalConsoleCapture() {
 export function registerLLMListener() {
 	if (llmListenerRegistered) return;
 	llmListenerRegistered = true;
+
+	EventsOff('llm-event', 'artifact-update', 'tool-event');
 
 	initGlobalConsoleCapture();
 
