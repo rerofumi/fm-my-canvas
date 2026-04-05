@@ -38,7 +38,7 @@ jobs:
       - name: Package
         run: |
           PLATFORM=${{ matrix.platform }}
-          DIR=fm-doc-canvas-${PLATFORM}
+          DIR=fm-my-canvas-${PLATFORM}
           mkdir -p ${DIR}
           # Copy binary from wails build output (build/bin/)
           cp build/bin/* ${DIR}/
