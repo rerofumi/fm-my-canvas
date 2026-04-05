@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -77,7 +78,7 @@ func (m *Manager) List() ([]*types.Session, error) {
 		if e.IsDir() || filepath.Ext(e.Name()) != ".json" {
 			continue
 		}
-		id := e.Name()[:len(e.Name())-5]
+		id := strings.TrimSuffix(e.Name(), ".json")
 		s, err := m.Get(id)
 		if err != nil {
 			continue

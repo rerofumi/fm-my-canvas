@@ -1,87 +1,26 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { getConsoleLogs, clearConsoleLogs } from '../../lib/stores/chat.svelte';
 
-	interface ConsoleLog {
-		type: 'log' | 'error' | 'warn' | 'info';
-		message: string;
-		timestamp: string;
-	}
-
-	let logs = $state<ConsoleLog[]>([]);
+	let logs = $derived(getConsoleLogs());
 	let container: HTMLDivElement | undefined = $state();
 	let filter = $state<'all' | 'log' | 'error' | 'warn' | 'info'>('all');
 
-	const originalConsole = {
-		log: console.log.bind(console),
-		error: console.error.bind(console),
-		warn: console.warn.bind(console),
-		info: console.info.bind(console),
-	};
+	let logCount = $derived(logs.length);
 
-	function addLog(type: 'log' | 'error' | 'warn' | 'info', args: unknown[]) {
-		const message = args
-			.map(arg => {
-				if (typeof arg === 'object') {
-					try {
-						return JSON.stringify(arg, null, 2);
-					} catch {
-						return String(arg);
-					}
-				}
-				return String(arg);
-			})
-			.join(' ');
-
-		logs = [
-			...logs,
-			{
-				type,
-				message,
-				timestamp: new Date().toLocaleTimeString(),
-			},
-		];
-
+	$effect(() => {
+		logCount;
 		if (container) {
 			container.scrollTop = container.scrollHeight;
 		}
-	}
-
-	function clearLogs() {
-		logs = [];
-	}
-
-	onMount(() => {
-		console.log = (...args) => {
-			originalConsole.log(...args);
-			addLog('log', args);
-		};
-
-		console.error = (...args) => {
-			originalConsole.error(...args);
-			addLog('error', args);
-		};
-
-		console.warn = (...args) => {
-			originalConsole.warn(...args);
-			addLog('warn', args);
-		};
-
-		console.info = (...args) => {
-			originalConsole.info(...args);
-			addLog('info', args);
-		};
-
-		return () => {
-			console.log = originalConsole.log;
-			console.error = originalConsole.error;
-			console.warn = originalConsole.warn;
-			console.info = originalConsole.info;
-		};
 	});
 
 	let filteredLogs = $derived(
 		filter === 'all' ? logs : logs.filter(log => log.type === filter)
 	);
+
+	function clearLogs() {
+		clearConsoleLogs();
+	}
 </script>
 
 <div class="console-pane">
@@ -102,15 +41,18 @@
 		</div>
 	</div>
 	<div class="console-body" bind:this={container}>
-		{#each filteredLogs as log (log.timestamp + log.message)}
-			<div class="console-entry" class:log-error={log.type === 'error'} class:log-warn={log.type === 'warn'} class:log-info={log.type === 'info'}>
+		{#each filteredLogs as log, i (i)}
+			<div class="console-entry" class:log-error={log.type === 'error'} class:log-warn={log.type === 'warn'} class:log-info={log.type === 'info'} class:log-iframe={log.source === 'iframe'}>
 				<span class="log-timestamp">[{log.timestamp}]</span>
 				<span class="log-type">{log.type.toUpperCase()}:</span>
+				{#if log.source === 'iframe'}
+					<span class="log-source">[preview]</span>
+				{/if}
 				<pre class="log-message">{log.message}</pre>
 			</div>
 		{/each}
 		{#if filteredLogs.length === 0}
-			<div class="console-empty">No logs yet</div>
+			<div class="console-empty">No console output yet</div>
 		{/if}
 	</div>
 </div>
@@ -199,6 +141,13 @@
 		color: #63b3ed;
 		flex-shrink: 0;
 		font-weight: 600;
+	}
+
+	.log-source {
+		color: #68d391;
+		flex-shrink: 0;
+		font-size: 0.65rem;
+		opacity: 0.7;
 	}
 
 	.console-entry.log-error .log-type {

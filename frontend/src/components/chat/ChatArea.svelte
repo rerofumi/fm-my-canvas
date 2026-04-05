@@ -6,7 +6,7 @@
 		getCurrentSessionId,
 		getToolCallLog,
 	} from '../../lib/stores/chat.svelte';
-	import { sendMessage, createNewSession } from '../../lib/services/wails';
+	import { sendMessage, createNewSession, cancelSend } from '../../lib/services/wails';
 	import ChatMessage from './ChatMessage.svelte';
 	import ChatInput from './ChatInput.svelte';
 	import ToolCallMessage from './ToolCallMessage.svelte';
@@ -32,6 +32,10 @@
 			await createNewSession();
 		}
 		sendMessage(text);
+	}
+
+	function handleStop() {
+		cancelSend();
 	}
 </script>
 
@@ -66,7 +70,7 @@
 		</div>
 	{/if}
 
-	<ChatInput onsend={handleSend} disabled={isStreaming} />
+	<ChatInput onsend={handleSend} onstop={handleStop} disabled={isStreaming} />
 </div>
 
 <style>

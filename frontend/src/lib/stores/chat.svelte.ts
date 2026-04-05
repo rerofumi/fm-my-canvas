@@ -12,6 +12,13 @@ export interface ToolCallLogEntry {
 	timestamp: number;
 }
 
+export interface ConsoleLogEntry {
+	type: 'log' | 'error' | 'warn' | 'info';
+	message: string;
+	timestamp: string;
+	source: 'app' | 'iframe';
+}
+
 let sessions = $state<ChatSession[]>([]);
 let currentSessionId = $state<string | null>(null);
 let streamingContent = $state<string>('');
@@ -20,6 +27,7 @@ let artifactFiles = $state<ArtifactFile[]>([]);
 let previewUrl = $state<string>('');
 let selectedFilePath = $state<string | null>(null);
 let toolCallLog = $state<ToolCallLogEntry[]>([]);
+let consoleLogs = $state<ConsoleLogEntry[]>([]);
 
 export function getSessions() {
 	return sessions;
@@ -55,6 +63,10 @@ export function getSelectedFilePath() {
 
 export function getToolCallLog() {
 	return toolCallLog;
+}
+
+export function getConsoleLogs() {
+	return consoleLogs;
 }
 
 export function setSessions(s: ChatSession[]) {
@@ -123,4 +135,12 @@ export function updateToolCallResult(index: number, result: string, status: 'suc
 		updated[index] = { ...updated[index], result, status };
 		toolCallLog = updated;
 	}
+}
+
+export function addConsoleLog(entry: ConsoleLogEntry) {
+	consoleLogs = [...consoleLogs, entry];
+}
+
+export function clearConsoleLogs() {
+	consoleLogs = [];
 }

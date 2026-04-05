@@ -9,8 +9,10 @@ import (
 	"fm-my-canvas/session"
 	"fm-my-canvas/tools"
 	"fm-my-canvas/types"
+	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -19,6 +21,8 @@ import (
 const maxToolRounds = 10
 const toolLoopTimeout = 5 * time.Minute
 const maxToolResultBytes = 50 * 1024
+const keepRecentRounds = 2
+const summaryPrefix = "[Previous tool result summarized] "
 
 type ChatService struct {
 	ctx         context.Context
@@ -27,6 +31,8 @@ type ChatService struct {
 	artifact    *artifacts.Manager
 	server      *artifacts.Server
 	toolManager *tools.ToolManager
+	cancelMu    sync.Mutex
+	cancelFn    context.CancelFunc
 }
 
 func NewChatService(artifactMgr *artifacts.Manager, server *artifacts.Server) (*ChatService, error) {
@@ -43,6 +49,7 @@ func NewChatService(artifactMgr *artifacts.Manager, server *artifacts.Server) (*
 	tm.Register(tools.NewReadFileTool(artifactMgr))
 	tm.Register(tools.NewWriteFileTool(artifactMgr))
 	tm.Register(tools.NewListFilesTool(artifactMgr))
+	tm.Register(tools.NewApplyEditTool(artifactMgr))
 
 	return &ChatService{
 		sessions:    mgr,
@@ -55,6 +62,77 @@ func NewChatService(artifactMgr *artifacts.Manager, server *artifacts.Server) (*
 
 func (c *ChatService) SetContext(ctx context.Context) {
 	c.ctx = ctx
+}
+
+func (c *ChatService) newProvider() provider.Provider {
+	switch c.config.Provider {
+	case "openrouter":
+		return provider.NewOpenRouter(c.config.OpenRouterAPIKey, c.config.OpenRouterModel)
+	default:
+		return provider.NewOllama(c.config.OllamaEndpoint, c.config.OllamaModel)
+	}
+}
+
+func (c *ChatService) setCancelFn(fn context.CancelFunc) {
+	c.cancelMu.Lock()
+	defer c.cancelMu.Unlock()
+	c.cancelFn = fn
+}
+
+func (c *ChatService) clearCancelFn() {
+	c.cancelMu.Lock()
+	defer c.cancelMu.Unlock()
+	c.cancelFn = nil
+}
+
+func (c *ChatService) CancelSend() {
+	c.cancelMu.Lock()
+	defer c.cancelMu.Unlock()
+	if c.cancelFn != nil {
+		c.cancelFn()
+		c.cancelFn = nil
+	}
+}
+
+func languageFromExt(path string) string {
+	ext := filepath.Ext(path)
+	switch ext {
+	case ".html":
+		return "html"
+	case ".css":
+		return "css"
+	case ".js":
+		return "javascript"
+	case ".ts":
+		return "typescript"
+	case ".json":
+		return "json"
+	case ".md":
+		return "markdown"
+	default:
+		return strings.TrimPrefix(ext, ".")
+	}
+}
+
+func (c *ChatService) GetArtifactFileContents(sessionID string) []types.ArtifactFileInfo {
+	files, err := c.artifact.ListFiles(sessionID)
+	if err != nil || len(files) == 0 {
+		return nil
+	}
+	var result []types.ArtifactFileInfo
+	for _, f := range files {
+		content, err := c.artifact.ReadFile(sessionID, f)
+		if err != nil {
+			result = append(result, types.ArtifactFileInfo{Path: f, Language: languageFromExt(f), Content: ""})
+			continue
+		}
+		result = append(result, types.ArtifactFileInfo{
+			Path:     f,
+			Language: languageFromExt(f),
+			Content:  content,
+		})
+	}
+	return result
 }
 
 func (c *ChatService) CreateSession(title string) string {
@@ -125,15 +203,19 @@ func buildSystemPrompt(agentMode bool) string {
 			"When asked to modify code:\n" +
 			"1. First, use read_file to understand the current code\n" +
 			"2. Analyze what needs to be changed\n" +
-			"3. Use write_file to write the updated code\n" +
-			"4. Always verify your changes make sense in the context of the whole project\n\n" +
+			"3. For minimal changes to existing code, use apply_edit to apply a search/replace edit\n" +
+			"4. For large changes or new files, use write_file to write the full content\n" +
+			"5. Always verify your changes make sense in the context of the whole project\n\n" +
+			"When apply_edit fails (e.g., search text not found or multiple matches), the error will be reported back to you. " +
+			"In that case, use write_file to rewrite the entire file as a fallback.\n\n" +
 			"When asked about the project structure:\n" +
 			"1. Use list_files to understand the file layout\n" +
 			"2. Read relevant files to understand dependencies\n\n" +
 			"Available tools:\n" +
 			"- read_file(path): Read file contents\n" +
 			"- write_file(path, content): Write file contents\n" +
-			"- list_files([path]): List files in directory"
+			"- list_files([path]): List files in directory\n" +
+			"- apply_edit(path, search, replace): Apply a search/replace edit to a file"
 	}
 	return "You are a helpful assistant that generates HTML, CSS, and JavaScript code for UI prototyping. " +
 		"When the user asks you to create something, output the code in markdown code blocks with the filename in the header. " +
@@ -172,15 +254,16 @@ func (c *ChatService) SendMessage(sessionID string, message string) error {
 }
 
 func (c *ChatService) sendMessageMarkdown(sessionID string, allMessages []types.Message) error {
+	ctx, cancel := context.WithCancel(c.ctx)
+	c.setCancelFn(cancel)
+	defer func() {
+		cancel()
+		c.clearCancelFn()
+	}()
+
 	var accumulated string
-	var p provider.Provider
-	switch c.config.Provider {
-	case "openrouter":
-		p = provider.NewOpenRouter(c.config.OpenRouterAPIKey, c.config.OpenRouterModel)
-	default:
-		p = provider.NewOllama(c.config.OllamaEndpoint, c.config.OllamaModel)
-	}
-	err := p.Stream(c.ctx, allMessages, func(chunk string) {
+	p := c.newProvider()
+	err := p.Stream(ctx, allMessages, func(chunk string) {
 		accumulated += chunk
 		wailsRuntime.EventsEmit(c.ctx, "llm-event", map[string]string{
 			"type":       "chunk",
@@ -246,17 +329,51 @@ func truncateToolResult(result string) string {
 	return result[:half] + "\n\n... (truncated) ...\n\n" + result[len(result)-half:]
 }
 
+func summarizeOldToolResults(messages []types.Message) []types.Message {
+	summarized := make([]types.Message, len(messages))
+	copy(summarized, messages)
+
+	toolIndices := []int{}
+	for i, m := range summarized {
+		if m.Role == types.RoleTool {
+			toolIndices = append(toolIndices, i)
+		}
+	}
+
+	if len(toolIndices) <= keepRecentRounds {
+		return summarized
+	}
+
+	cutoff := len(toolIndices) - keepRecentRounds
+	for _, idx := range toolIndices[:cutoff] {
+		content := summarized[idx].Content
+		firstLine := content
+		if newlinePos := strings.Index(content, "\n"); newlinePos >= 0 {
+			firstLine = content[:newlinePos]
+		}
+		if len(firstLine) > 100 {
+			firstLine = firstLine[:100] + "..."
+		}
+		summarized[idx] = types.Message{
+			Role:       summarized[idx].Role,
+			Content:    summaryPrefix + firstLine,
+			ToolCallID: summarized[idx].ToolCallID,
+			CreatedAt:  summarized[idx].CreatedAt,
+		}
+	}
+
+	return summarized
+}
+
 func (c *ChatService) sendMessageWithTools(sessionID string, messages []types.Message) error {
 	ctx, cancel := context.WithTimeout(c.ctx, toolLoopTimeout)
-	defer cancel()
+	c.setCancelFn(cancel)
+	defer func() {
+		cancel()
+		c.clearCancelFn()
+	}()
 
-	var p provider.Provider
-	switch c.config.Provider {
-	case "openrouter":
-		p = provider.NewOpenRouter(c.config.OpenRouterAPIKey, c.config.OpenRouterModel)
-	default:
-		p = provider.NewOllama(c.config.OllamaEndpoint, c.config.OllamaModel)
-	}
+	p := c.newProvider()
 
 	toolDefs := buildToolDefinitions(c.toolManager)
 
@@ -278,7 +395,8 @@ func (c *ChatService) sendMessageWithTools(sessionID string, messages []types.Me
 		var textAccumulated string
 		var toolCalls []types.ToolCall
 
-		err := p.StreamWithTools(ctx, allMessages, toolDefs, func(event provider.StreamEvent) {
+		messagesForLLM := summarizeOldToolResults(allMessages)
+		err := p.StreamWithTools(ctx, messagesForLLM, toolDefs, func(event provider.StreamEvent) {
 			switch event.Type {
 			case provider.EventContent:
 				textAccumulated += event.Content
@@ -367,7 +485,9 @@ func (c *ChatService) sendMessageWithTools(sessionID string, messages []types.Me
 		Content:   textAccumulatedOrDefault(allMessages),
 		CreatedAt: time.Now().Format(time.RFC3339),
 	}
-	_ = c.sessions.AddMessage(sessionID, assistantMsg)
+	if err := c.sessions.AddMessage(sessionID, assistantMsg); err != nil {
+		return err
+	}
 
 	wailsRuntime.EventsEmit(c.ctx, "llm-event", map[string]string{
 		"type":       "done",
@@ -403,58 +523,55 @@ func buildToolDefinitions(tm *tools.ToolManager) []provider.ToolDefinition {
 	return defs
 }
 
-func (c *ChatService) emitArtifactUpdate(sessionID string) {
+func (c *ChatService) resolveArtifactInfo(sessionID string) (files []string, previewURL string, ok bool) {
 	files, err := c.artifact.ListFiles(sessionID)
 	if err != nil || len(files) == 0 {
-		return
+		return nil, "", false
 	}
 
 	wsDir := c.artifact.WorkspaceDir(sessionID)
 	url, serr := c.server.Start(c.ctx, wsDir)
 	if serr != nil {
-		return
+		return nil, "", false
 	}
 	c.server.UpdateDir(wsDir)
 
+	previewURL = url
 	for _, f := range files {
 		if f == "index.html" {
-			wailsRuntime.EventsEmit(c.ctx, "artifact-update", map[string]string{
-				"session_id":  sessionID,
-				"preview_url": url + "/index.html",
-				"files":       strings.Join(files, ","),
-			})
-			return
-		}
-	}
-
-	wailsRuntime.EventsEmit(c.ctx, "artifact-update", map[string]string{
-		"session_id": sessionID,
-		"files":      strings.Join(files, ","),
-	})
-}
-
-func (c *ChatService) RestoreArtifacts(sessionID string) map[string]string {
-	result := map[string]string{}
-
-	files, err := c.artifact.ListFiles(sessionID)
-	if err != nil || len(files) == 0 {
-		return result
-	}
-
-	wsDir := c.artifact.WorkspaceDir(sessionID)
-	url, serr := c.server.Start(c.ctx, wsDir)
-	if serr != nil {
-		return result
-	}
-	c.server.UpdateDir(wsDir)
-
-	for _, f := range files {
-		if f == "index.html" {
-			result["preview_url"] = url + "/index.html"
+			previewURL = url + "/index.html"
 			break
 		}
 	}
-	result["files"] = strings.Join(files, ",")
+	return files, previewURL, true
+}
+
+func (c *ChatService) emitArtifactUpdate(sessionID string) {
+	files, previewURL, ok := c.resolveArtifactInfo(sessionID)
+	if !ok {
+		return
+	}
+
+	evt := map[string]string{
+		"session_id": sessionID,
+		"files":      strings.Join(files, ","),
+	}
+	if previewURL != "" {
+		evt["preview_url"] = previewURL
+	}
+	wailsRuntime.EventsEmit(c.ctx, "artifact-update", evt)
+}
+
+func (c *ChatService) RestoreArtifacts(sessionID string) map[string]string {
+	files, previewURL, ok := c.resolveArtifactInfo(sessionID)
+	if !ok {
+		return map[string]string{}
+	}
+
+	result := map[string]string{"files": strings.Join(files, ",")}
+	if previewURL != "" {
+		result["preview_url"] = previewURL
+	}
 	return result
 }
 

@@ -197,6 +197,9 @@ func TestBuildSystemPromptAgentMode(t *testing.T) {
 	if !strings.Contains(prompt, "list_files") {
 		t.Error("agent prompt should mention list_files")
 	}
+	if !strings.Contains(prompt, "apply_edit") {
+		t.Error("agent prompt should mention apply_edit")
+	}
 }
 
 func TestBuildSystemPromptMarkdownMode(t *testing.T) {
@@ -441,5 +444,201 @@ func TestSendMessageAgentModeReinjectsTruncatedToolResults(t *testing.T) {
 	}
 	if len(last.Content) > maxToolResultBytes+len("\n\n... (truncated) ...\n\n") {
 		t.Fatalf("truncated tool result too large: %d", len(last.Content))
+	}
+}
+
+func TestSummarizeOldToolResults_NoToolMessages(t *testing.T) {
+	messages := []types.Message{
+		{Role: types.RoleUser, Content: "hello"},
+		{Role: types.RoleAssistant, Content: "hi there"},
+	}
+
+	result := summarizeOldToolResults(messages)
+
+	if len(result) != len(messages) {
+		t.Errorf("result len = %d, want %d", len(result), len(messages))
+	}
+
+	for i, m := range result {
+		if m.Content != messages[i].Content {
+			t.Errorf("message %d content changed", i)
+		}
+	}
+}
+
+func TestSummarizeOldToolResults_WithinKeepRounds(t *testing.T) {
+	messages := []types.Message{
+		{Role: types.RoleUser, Content: "user"},
+		{Role: types.RoleAssistant, Content: "assistant", ToolCalls: []types.ToolCall{{ID: "call1"}}},
+		{Role: types.RoleTool, Content: "tool result 1", ToolCallID: "call1"},
+	}
+
+	result := summarizeOldToolResults(messages)
+
+	if len(result) != len(messages) {
+		t.Errorf("result len = %d, want %d", len(result), len(messages))
+	}
+
+	if result[2].Content != "tool result 1" {
+		t.Errorf("tool message within keep rounds should not be summarized, got %q", result[2].Content)
+	}
+}
+
+func TestSummarizeOldToolResults_ExceedsKeepRounds(t *testing.T) {
+	messages := []types.Message{
+		{Role: types.RoleUser, Content: "user"},
+		{Role: types.RoleAssistant, Content: "assistant 1", ToolCalls: []types.ToolCall{{ID: "call1"}}},
+		{Role: types.RoleTool, Content: "tool result 1", ToolCallID: "call1"},
+		{Role: types.RoleAssistant, Content: "assistant 2", ToolCalls: []types.ToolCall{{ID: "call2"}}},
+		{Role: types.RoleTool, Content: "tool result 2", ToolCallID: "call2"},
+		{Role: types.RoleAssistant, Content: "assistant 3", ToolCalls: []types.ToolCall{{ID: "call3"}}},
+		{Role: types.RoleTool, Content: "tool result 3", ToolCallID: "call3"},
+	}
+
+	result := summarizeOldToolResults(messages)
+
+	if len(result) != len(messages) {
+		t.Errorf("result len = %d, want %d", len(result), len(messages))
+	}
+
+	if !strings.Contains(result[2].Content, summaryPrefix) {
+		t.Errorf("old tool result should be summarized, got %q", result[2].Content)
+	}
+
+	if strings.Contains(result[4].Content, summaryPrefix) {
+		t.Errorf("recent tool result should not be summarized, got %q", result[4].Content)
+	}
+
+	if result[4].Content != "tool result 2" {
+		t.Errorf("recent tool result should be preserved, got %q", result[4].Content)
+	}
+
+	if strings.Contains(result[6].Content, summaryPrefix) {
+		t.Errorf("recent tool result should not be summarized, got %q", result[6].Content)
+	}
+
+	if result[6].Content != "tool result 3" {
+		t.Errorf("recent tool result should be preserved, got %q", result[6].Content)
+	}
+}
+
+func TestSummarizeOldToolResults_DoesNotModifyOriginal(t *testing.T) {
+	messages := []types.Message{
+		{Role: types.RoleAssistant, Content: "assistant 1", ToolCalls: []types.ToolCall{{ID: "call1"}}},
+		{Role: types.RoleTool, Content: "tool result 1", ToolCallID: "call1"},
+		{Role: types.RoleAssistant, Content: "assistant 2", ToolCalls: []types.ToolCall{{ID: "call2"}}},
+		{Role: types.RoleTool, Content: "tool result 2", ToolCallID: "call2"},
+		{Role: types.RoleAssistant, Content: "assistant 3", ToolCalls: []types.ToolCall{{ID: "call3"}}},
+		{Role: types.RoleTool, Content: "tool result 3", ToolCallID: "call3"},
+	}
+
+	originalContent := make([]string, len(messages))
+	for i, m := range messages {
+		originalContent[i] = m.Content
+	}
+
+	_ = summarizeOldToolResults(messages)
+
+	for i, m := range messages {
+		if m.Content != originalContent[i] {
+			t.Errorf("original message %d was modified, got %q, want %q", i, m.Content, originalContent[i])
+		}
+	}
+}
+
+func TestSummarizeOldToolResults_SummaryLength(t *testing.T) {
+	longContent := strings.Repeat("x", 200)
+	messages := []types.Message{
+		{Role: types.RoleAssistant, Content: "assistant 1", ToolCalls: []types.ToolCall{{ID: "call1"}}},
+		{Role: types.RoleTool, Content: longContent, ToolCallID: "call1"},
+		{Role: types.RoleAssistant, Content: "assistant 2", ToolCalls: []types.ToolCall{{ID: "call2"}}},
+		{Role: types.RoleTool, Content: "tool result 2", ToolCallID: "call2"},
+		{Role: types.RoleAssistant, Content: "assistant 3", ToolCalls: []types.ToolCall{{ID: "call3"}}},
+		{Role: types.RoleTool, Content: "tool result 3", ToolCallID: "call3"},
+	}
+
+	result := summarizeOldToolResults(messages)
+
+	maxLength := len(summaryPrefix) + 100 + 3 // prefix + 100 chars + "..."
+	if len(result[1].Content) > maxLength {
+		t.Errorf("summarized content too long: %d, max %d", len(result[1].Content), maxLength)
+	}
+
+	if !strings.HasPrefix(result[1].Content, summaryPrefix) {
+		t.Errorf("summarized content should have prefix, got %q", result[1].Content)
+	}
+
+	if !strings.Contains(result[1].Content, "...") {
+		t.Errorf("summarized content should have ellipsis, got %q", result[1].Content)
+	}
+
+	if result[3].Content != "tool result 2" {
+		t.Errorf("recent tool result should be preserved, got %q", result[3].Content)
+	}
+}
+
+func TestSummarizeOldToolResults_PreservesToolCallID(t *testing.T) {
+	messages := []types.Message{
+		{Role: types.RoleAssistant, Content: "assistant 1", ToolCalls: []types.ToolCall{{ID: "call1"}}},
+		{Role: types.RoleTool, Content: "tool result 1", ToolCallID: "call1", CreatedAt: "2024-01-01T00:00:00Z"},
+		{Role: types.RoleAssistant, Content: "assistant 2", ToolCalls: []types.ToolCall{{ID: "call2"}}},
+		{Role: types.RoleTool, Content: "tool result 2", ToolCallID: "call2", CreatedAt: "2024-01-01T00:01:00Z"},
+		{Role: types.RoleAssistant, Content: "assistant 3", ToolCalls: []types.ToolCall{{ID: "call3"}}},
+		{Role: types.RoleTool, Content: "tool result 3", ToolCallID: "call3", CreatedAt: "2024-01-01T00:02:00Z"},
+	}
+
+	result := summarizeOldToolResults(messages)
+
+	if result[1].ToolCallID != "call1" {
+		t.Errorf("ToolCallID not preserved for message 1, got %q, want call1", result[1].ToolCallID)
+	}
+
+	if result[1].CreatedAt != "2024-01-01T00:00:00Z" {
+		t.Errorf("CreatedAt not preserved for message 1, got %q, want 2024-01-01T00:00:00Z", result[1].CreatedAt)
+	}
+
+	if result[3].ToolCallID != "call2" {
+		t.Errorf("ToolCallID not preserved for message 3, got %q, want call2", result[3].ToolCallID)
+	}
+
+	if result[3].CreatedAt != "2024-01-01T00:01:00Z" {
+		t.Errorf("CreatedAt not preserved for message 3, got %q, want 2024-01-01T00:01:00Z", result[3].CreatedAt)
+	}
+
+	if result[5].ToolCallID != "call3" {
+		t.Errorf("ToolCallID not preserved for message 5, got %q, want call3", result[5].ToolCallID)
+	}
+
+	if result[5].CreatedAt != "2024-01-01T00:02:00Z" {
+		t.Errorf("CreatedAt not preserved for message 5, got %q, want 2024-01-01T00:02:00Z", result[5].CreatedAt)
+	}
+}
+
+func TestSummarizeOldToolResults_MultilineContent(t *testing.T) {
+	messages := []types.Message{
+		{Role: types.RoleAssistant, Content: "assistant 1", ToolCalls: []types.ToolCall{{ID: "call1"}}},
+		{Role: types.RoleTool, Content: "line1\nline2\nline3", ToolCallID: "call1"},
+		{Role: types.RoleAssistant, Content: "assistant 2", ToolCalls: []types.ToolCall{{ID: "call2"}}},
+		{Role: types.RoleTool, Content: "tool result 2", ToolCallID: "call2"},
+		{Role: types.RoleAssistant, Content: "assistant 3", ToolCalls: []types.ToolCall{{ID: "call3"}}},
+		{Role: types.RoleTool, Content: "tool result 3", ToolCallID: "call3"},
+	}
+
+	result := summarizeOldToolResults(messages)
+
+	if !strings.Contains(result[1].Content, "line1") {
+		t.Errorf("summarized content should contain first line, got %q", result[1].Content)
+	}
+
+	if strings.Contains(result[1].Content, "line2") {
+		t.Errorf("summarized content should not contain second line, got %q", result[1].Content)
+	}
+
+	if result[3].Content != "tool result 2" {
+		t.Errorf("recent tool result should be preserved, got %q", result[3].Content)
+	}
+
+	if result[5].Content != "tool result 3" {
+		t.Errorf("recent tool result should be preserved, got %q", result[5].Content)
 	}
 }

@@ -1,5 +1,5 @@
 <script lang="ts">
-	let { onsend, disabled = false }: { onsend: (text: string) => void; disabled?: boolean } = $props();
+	let { onsend, onstop, disabled = false }: { onsend: (text: string) => void; onstop: () => void; disabled?: boolean } = $props();
 
 	let inputText = $state('');
 	let textareaEl: HTMLTextAreaElement | undefined = $state();
@@ -41,9 +41,17 @@
 		rows="2"
 		class="chat-textarea"
 	></textarea>
-	<button class="send-btn" onclick={handleSend} disabled={disabled || !inputText.trim()}>
-		Send
-	</button>
+	{#if disabled}
+		<div class="streaming-controls">
+			<span class="pilot-lamp"></span>
+			<span class="streaming-label">Working...</span>
+			<button class="stop-btn" onclick={onstop}>&#9632; Stop</button>
+		</div>
+	{:else}
+		<button class="send-btn" onclick={handleSend} disabled={!inputText.trim()}>
+			Send
+		</button>
+	{/if}
 </div>
 
 <style>
@@ -103,5 +111,49 @@
 	.send-btn:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
+	}
+
+	.streaming-controls {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		align-self: flex-end;
+		padding: 0.4rem 0;
+	}
+
+	.pilot-lamp {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background-color: #48bb78;
+		animation: pulse 1.5s ease-in-out infinite;
+		flex-shrink: 0;
+	}
+
+	@keyframes pulse {
+		0%, 100% { opacity: 1; box-shadow: 0 0 4px #48bb78; }
+		50% { opacity: 0.3; box-shadow: 0 0 0px #48bb78; }
+	}
+
+	.streaming-label {
+		font-size: 0.8rem;
+		color: #a0aec0;
+		white-space: nowrap;
+	}
+
+	.stop-btn {
+		padding: 0.5rem 1rem;
+		font-size: 0.85rem;
+		background-color: #c53030;
+		color: white;
+		border: none;
+		border-radius: 6px;
+		cursor: pointer;
+		white-space: nowrap;
+		transition: background-color 0.15s;
+	}
+
+	.stop-btn:hover {
+		background-color: #e53e3e;
 	}
 </style>

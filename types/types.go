@@ -30,3 +30,9 @@ type Session struct {
 	CreatedAt string    `json:"created_at"`
 	UpdatedAt string    `json:"updated_at"`
 }
+
+type ArtifactFileInfo struct {
+	Path     string `json:"path"`
+	Language string `json:"language"`
+	Content  string `json:"content"`
+}

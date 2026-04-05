@@ -16,10 +16,12 @@ import {
 	addToolCallEntry,
 	updateToolCallResult,
 	getToolCallLog,
+	addConsoleLog,
 } from '../stores/chat.svelte';
 import { EventsOn } from '../../../wailsjs/runtime/runtime';
 import type { config } from '../../../wailsjs/go/models';
-import { parseStreamingArtifacts, parseArtifacts } from '../parsers/artifact';
+import { parseStreamingArtifacts } from '../parsers/artifact';
+import type { ArtifactFile } from '../parsers/artifact';
 
 export async function loadConfig(): Promise<config.Config> {
 	const { GetConfig } = await import('../../../wailsjs/go/main/ChatService');
@@ -44,6 +46,23 @@ export async function createNewSession() {
 	return id;
 }
 
+async function loadArtifactFilesFromDisk(sessionID: string) {
+	const { GetArtifactFileContents } = await import('../../../wailsjs/go/main/ChatService');
+	const fileInfos = await GetArtifactFileContents(sessionID) as Array<{ path: string; language: string; content: string }>;
+	if (fileInfos && fileInfos.length > 0) {
+		const files: ArtifactFile[] = fileInfos.map(f => ({
+			path: f.path,
+			language: f.language,
+			content: f.content,
+		}));
+		setArtifactFiles(files);
+		setSelectedFilePath(files[0].path);
+	} else {
+		setArtifactFiles([]);
+		setSelectedFilePath(null);
+	}
+}
+
 export async function switchSession(id: string) {
 	setCurrentSessionId(id);
 	const { GetSession } = await import('../../../wailsjs/go/main/ChatService');
@@ -61,28 +80,7 @@ export async function switchSession(id: string) {
 		}
 
 		if (result.files) {
-			const paths = result.files.split(',').filter(Boolean);
-			if (paths.length > 0) {
-				setSelectedFilePath(paths[0]);
-
-				let lastArtifactContent = '';
-				for (let i = session.messages.length - 1; i >= 0; i--) {
-					const msg = session.messages[i];
-					if (msg.role === 'assistant') {
-						const files = parseArtifacts(msg.content);
-						if (files.length > 0) {
-							lastArtifactContent = msg.content;
-							break;
-						}
-					}
-				}
-
-				if (lastArtifactContent) {
-					setArtifactFiles(parseArtifacts(lastArtifactContent));
-				} else {
-					setArtifactFiles(paths.map(p => ({ language: '', path: p, content: '' })));
-				}
-			}
+			await loadArtifactFilesFromDisk(id);
 		} else {
 			setArtifactFiles([]);
 			setPreviewUrl('');
@@ -122,6 +120,11 @@ export async function sendMessage(message: string) {
 	}
 }
 
+export async function cancelSend() {
+	const { CancelSend } = await import('../../../wailsjs/go/main/ChatService');
+	await CancelSend();
+}
+
 let llmListenerRegistered = false;
 let artifactThrottleTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -136,14 +139,74 @@ function scheduleArtifactUpdate() {
 				setArtifactFiles(files);
 			}
 		} catch {
-			// ignore parse errors during streaming
 		}
 	}, 400);
+}
+
+function initGlobalConsoleCapture() {
+	const originalConsole = {
+		log: console.log.bind(console),
+		error: console.error.bind(console),
+		warn: console.warn.bind(console),
+		info: console.info.bind(console),
+	};
+
+	function captureAppConsole(type: 'log' | 'error' | 'warn' | 'info', args: unknown[]) {
+		const message = args
+			.map(arg => {
+				if (typeof arg === 'object') {
+					try {
+						return JSON.stringify(arg, null, 2);
+					} catch {
+						return String(arg);
+					}
+				}
+				return String(arg);
+			})
+			.join(' ');
+		addConsoleLog({
+			type,
+			message,
+			timestamp: new Date().toLocaleTimeString(),
+			source: 'app',
+		});
+	}
+
+	console.log = (...args: unknown[]) => {
+		originalConsole.log(...args);
+		captureAppConsole('log', args);
+	};
+	console.error = (...args: unknown[]) => {
+		originalConsole.error(...args);
+		captureAppConsole('error', args);
+	};
+	console.warn = (...args: unknown[]) => {
+		originalConsole.warn(...args);
+		captureAppConsole('warn', args);
+	};
+	console.info = (...args: unknown[]) => {
+		originalConsole.info(...args);
+		captureAppConsole('info', args);
+	};
+
+	window.addEventListener('message', (event: MessageEvent) => {
+		if (event.data && event.data.type === 'iframe-console') {
+			const message = (event.data.args as string[]).join(' ');
+			addConsoleLog({
+				type: event.data.level as 'log' | 'error' | 'warn' | 'info',
+				message,
+				timestamp: new Date(event.data.timestamp || Date.now()).toLocaleTimeString(),
+				source: 'iframe',
+			});
+		}
+	});
 }
 
 export function registerLLMListener() {
 	if (llmListenerRegistered) return;
 	llmListenerRegistered = true;
+
+	initGlobalConsoleCapture();
 
 	EventsOn('llm-event', (data: Record<string, string>) => {
 		try {
@@ -158,23 +221,19 @@ export function registerLLMListener() {
 				setIsStreaming(false);
 			}
 		} catch {
-			// ignore event processing errors
 		}
 	});
 
-	EventsOn('artifact-update', (data: Record<string, string>) => {
+	EventsOn('artifact-update', async (data: Record<string, string>) => {
 		try {
+			const sessionId = data.session_id;
 			if (data.preview_url) {
 				setPreviewUrl(data.preview_url);
 			}
-			if (data.files) {
-				const paths = data.files.split(',').filter(Boolean);
-				if (paths.length > 0) {
-					setSelectedFilePath(paths[0]);
-				}
+			if (sessionId) {
+				await loadArtifactFilesFromDisk(sessionId);
 			}
 		} catch {
-			// ignore
 		}
 	});
 
@@ -198,7 +257,6 @@ export function registerLLMListener() {
 				}
 			}
 		} catch {
-			// ignore
 		}
 	});
 }
