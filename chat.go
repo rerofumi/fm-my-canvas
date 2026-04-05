@@ -50,6 +50,7 @@ func NewChatService(artifactMgr *artifacts.Manager, server *artifacts.Server) (*
 	tm.Register(tools.NewWriteFileTool(artifactMgr))
 	tm.Register(tools.NewListFilesTool(artifactMgr))
 	tm.Register(tools.NewApplyEditTool(artifactMgr))
+	tm.Register(tools.NewSearchCodeTool(artifactMgr))
 
 	return &ChatService{
 		sessions:    mgr,
@@ -208,14 +209,16 @@ func buildSystemPrompt(agentMode bool) string {
 			"5. Always verify your changes make sense in the context of the whole project\n\n" +
 			"When apply_edit fails (e.g., search text not found or multiple matches), the error will be reported back to you. " +
 			"In that case, use write_file to rewrite the entire file as a fallback.\n\n" +
-			"When asked about the project structure:\n" +
+			"When working across multiple files or investigating an existing project:\n" +
 			"1. Use list_files to understand the file layout\n" +
-			"2. Read relevant files to understand dependencies\n\n" +
+			"2. Use search_code to find relevant code patterns across files\n" +
+			"3. Use read_file to inspect the specific files you need before making changes\n\n" +
 			"Available tools:\n" +
 			"- read_file(path): Read file contents\n" +
 			"- write_file(path, content): Write file contents\n" +
 			"- list_files([path]): List files in directory\n" +
-			"- apply_edit(path, search, replace): Apply a search/replace edit to a file"
+			"- apply_edit(path, search, replace): Apply a search/replace edit to a file\n" +
+			"- search_code(pattern, [file_pattern]): Search for a pattern in all files"
 	}
 	return "You are a helpful assistant that generates HTML, CSS, and JavaScript code for UI prototyping. " +
 		"When the user asks you to create something, output the code in markdown code blocks with the filename in the header. " +

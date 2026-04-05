@@ -200,6 +200,9 @@ func TestBuildSystemPromptAgentMode(t *testing.T) {
 	if !strings.Contains(prompt, "apply_edit") {
 		t.Error("agent prompt should mention apply_edit")
 	}
+	if !strings.Contains(prompt, "search_code") {
+		t.Error("agent prompt should mention search_code")
+	}
 }
 
 func TestBuildSystemPromptMarkdownMode(t *testing.T) {
@@ -611,6 +614,59 @@ func TestSummarizeOldToolResults_PreservesToolCallID(t *testing.T) {
 
 	if result[5].CreatedAt != "2024-01-01T00:02:00Z" {
 		t.Errorf("CreatedAt not preserved for message 5, got %q, want 2024-01-01T00:02:00Z", result[5].CreatedAt)
+	}
+}
+
+func TestBuildToolDefinitionsIncludesSearchCode(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
+
+	artifactMgr := artifacts.NewManagerWithDir(filepath.Join(homeDir, "artifacts"))
+	server := artifacts.NewServer()
+	svc, err := NewChatService(artifactMgr, server)
+	if err != nil {
+		t.Fatalf("NewChatService: %v", err)
+	}
+	svc.SetContext(context.Background())
+
+	defs := buildToolDefinitions(svc.toolManager)
+	found := false
+	var names []string
+	for _, d := range defs {
+		names = append(names, d.Function.Name)
+		if d.Function.Name == "search_code" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("search_code not in tool definitions: %v", names)
+	}
+}
+
+func TestBuildToolDefinitionsPreservesExistingTools(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
+
+	artifactMgr := artifacts.NewManagerWithDir(filepath.Join(homeDir, "artifacts"))
+	server := artifacts.NewServer()
+	svc, err := NewChatService(artifactMgr, server)
+	if err != nil {
+		t.Fatalf("NewChatService: %v", err)
+	}
+	svc.SetContext(context.Background())
+
+	defs := buildToolDefinitions(svc.toolManager)
+	expected := []string{"read_file", "write_file", "list_files", "apply_edit", "search_code"}
+	nameSet := make(map[string]bool)
+	for _, d := range defs {
+		nameSet[d.Function.Name] = true
+	}
+	for _, name := range expected {
+		if !nameSet[name] {
+			t.Errorf("missing tool definition: %s", name)
+		}
 	}
 }
 
