@@ -54,6 +54,6 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ github.ref }}
-          file: fm-doc-canvas-${{ matrix.platform }}.zip
-          asset_name: fm-doc-canvas-${{ matrix.platform }}.zip
+          file: fm-my-canvas-${{ matrix.platform }}.zip
+          asset_name: fm-my-canvas-${{ matrix.platform }}.zip
           overwrite: true
